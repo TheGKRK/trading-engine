@@ -10,7 +10,7 @@ pub enum BidOrAsk {
 
 #[derive(Debug)]
 pub struct Order {
-    size: Decimal,
+    pub size: Decimal,
     bid_or_ask: BidOrAsk,
 }
 
@@ -38,6 +38,14 @@ impl Limit {
         }
     }
 
+    pub fn add_order(&mut self, order: Order) {
+        self.orders.push(order);
+    }
+
+    pub fn total_volume(&self) -> Decimal {
+        self.orders.iter().map(|order| order.size).sum()
+    }
+
     fn fill_order(&mut self, market_order: &mut Order) {
         for limit_order in self.orders.iter_mut() {
             match market_order.size >= limit_order.size {
@@ -54,14 +62,7 @@ impl Limit {
                 break;
             }
         }
-    }
-
-    fn add_order(&mut self, order: Order) {
-        self.orders.push(order);
-    }
-
-    fn total_volume(&self) -> Decimal {
-        self.orders.iter().map(|order| order.size).sum()
+        self.orders.retain(|o| !o.is_filled());
     }
 }
 
@@ -77,6 +78,38 @@ impl Orderbook {
             asks: HashMap::new(),
             bids: HashMap::new(),
         }
+    }
+
+    pub fn best_ask(&self) -> Option<Decimal> {
+        self.asks.keys().cloned().min()
+    }
+
+    pub fn best_bid(&self) -> Option<Decimal> {
+        self.bids.keys().cloned().max()
+    }
+
+    pub fn ask_limits(&self) -> Vec<&Limit> {
+        let mut limits = self.asks.values().collect::<Vec<&Limit>>();
+        limits.sort_by(|a, b| a.price.cmp(&b.price));
+        limits
+    }
+
+    pub fn bid_limits(&self) -> Vec<&Limit> {
+        let mut limits = self.bids.values().collect::<Vec<&Limit>>();
+        limits.sort_by(|a, b| b.price.cmp(&a.price));
+        limits
+    }
+
+    fn ask_limits_mut(&mut self) -> Vec<&mut Limit> {
+        let mut limits = self.asks.values_mut().collect::<Vec<&mut Limit>>();
+        limits.sort_by(|a, b| a.price.cmp(&b.price));
+        limits
+    }
+
+    fn bid_limits_mut(&mut self) -> Vec<&mut Limit> {
+        let mut limits = self.bids.values_mut().collect::<Vec<&mut Limit>>();
+        limits.sort_by(|a, b| b.price.cmp(&a.price));
+        limits
     }
 
     pub fn add_limit_order(&mut self, price: Decimal, order: Order) {
@@ -106,8 +139,8 @@ impl Orderbook {
 
     pub fn fill_market_order(&mut self, market_order: &mut Order) {
         let limits = match market_order.bid_or_ask {
-            BidOrAsk::Ask => self.bid_limits(),
-            BidOrAsk::Bid => self.ask_limits(),
+            BidOrAsk::Ask => self.bid_limits_mut(),
+            BidOrAsk::Bid => self.ask_limits_mut(),
         };
 
         for limit in limits {
@@ -116,18 +149,6 @@ impl Orderbook {
                 break;
             }
         }
-    }
-
-    pub fn ask_limits(&mut self) -> Vec<&mut Limit> {
-        let mut limits = self.asks.values_mut().collect::<Vec<&mut Limit>>();
-        limits.sort_by(|a, b| a.price.cmp(&b.price));
-        limits
-    }
-
-    pub fn bid_limits(&mut self) -> Vec<&mut Limit> {
-        let mut limits = self.bids.values_mut().collect::<Vec<&mut Limit>>();
-        limits.sort_by(|a, b| b.price.cmp(&a.price));
-        limits
     }
 }
 
@@ -140,8 +161,7 @@ pub mod tests {
     fn limit_order_fill() {
         let price = dec!(10000);
         let mut limit = Limit::new(price);
-        let buy_limit_order = Order::new(BidOrAsk::Bid, dec!(100));
-        limit.add_order(buy_limit_order);
+        limit.add_order(Order::new(BidOrAsk::Bid, dec!(100)));
 
         let mut market_sell_order = Order::new(BidOrAsk::Ask, dec!(99));
         limit.fill_order(&mut market_sell_order);
@@ -161,10 +181,8 @@ pub mod tests {
         limit.fill_order(&mut market_sell_order);
 
         assert_eq!(market_sell_order.is_filled(), true);
-        assert_eq!(limit.orders.get(0).unwrap().is_filled(), true);
-        assert_eq!(limit.orders.get(0).unwrap().size, dec!(0));
-        assert_eq!(limit.orders.get(1).unwrap().is_filled(), false);
-        assert_eq!(limit.orders.get(1).unwrap().size, dec!(1));
+        assert_eq!(limit.orders.len(), 1);
+        assert_eq!(limit.orders.get(0).unwrap().size, dec!(1));
     }
 
     #[test]
@@ -188,15 +206,24 @@ pub mod tests {
         let mut market_order = Order::new(BidOrAsk::Bid, dec!(10));
         orderbook.fill_market_order(&mut market_order);
 
-        {
-            let ask_limits = orderbook.ask_limits();
-            let matched_limit = ask_limits.get(0).unwrap();
-            assert_eq!(matched_limit.price, dec!(100));
-            assert_eq!(market_order.is_filled(), true);
-            let matched_order = matched_limit.orders.get(0).unwrap();
-            assert_eq!(matched_order.is_filled(), true);
-        }
+        assert_eq!(market_order.is_filled(), true);
+        assert_eq!(orderbook.best_ask(), Some(dec!(100)));
 
-        println!("{:?}", orderbook.ask_limits());
+        let ask_limits = orderbook.ask_limits();
+        let matched_limit = ask_limits.get(0).unwrap();
+        assert_eq!(matched_limit.price, dec!(100));
+        assert_eq!(matched_limit.orders.len(), 0);
+    }
+
+    #[test]
+    fn orderbook_best_bid_ask() {
+        let mut orderbook = Orderbook::new();
+        orderbook.add_limit_order(dec!(100), Order::new(BidOrAsk::Ask, dec!(1)));
+        orderbook.add_limit_order(dec!(200), Order::new(BidOrAsk::Ask, dec!(1)));
+        orderbook.add_limit_order(dec!(90), Order::new(BidOrAsk::Bid, dec!(1)));
+        orderbook.add_limit_order(dec!(80), Order::new(BidOrAsk::Bid, dec!(1)));
+
+        assert_eq!(orderbook.best_ask(), Some(dec!(100)));
+        assert_eq!(orderbook.best_bid(), Some(dec!(90)));
     }
 }

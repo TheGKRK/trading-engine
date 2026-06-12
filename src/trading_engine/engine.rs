@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use rust_decimal::prelude::*;
 use super::orderbook::{Orderbook, Order};
@@ -17,23 +16,41 @@ impl TradingEngine {
 
     pub fn add_new_market(&mut self, pair: TradingPair) {
         self.orderbooks.insert(pair.clone(), Orderbook::new());
-        println!("opening new book for market {:?}", pair.to_string());
+        println!("opening new orderbook for market {}", pair.to_string());
     }
 
     pub fn place_limit_order(
         &mut self,
-        pair: TradingPair,
+        pair: &TradingPair,
         price: Decimal,
         order: Order,
     ) -> Result<(), String> {
-        match self.orderbooks.get_mut(&pair) {
+        match self.orderbooks.get_mut(pair) {
             Some(orderbook) => {
                 orderbook.add_limit_order(price, order);
-                println!("placed a limit order {:?}", price);
+                println!("placed limit order at {}", price);
                 Ok(())
             }
             None => Err(format!(
-                "the orderbook for the given pair ({}) does not exist",
+                "orderbook for pair {} does not exist",
+                pair.to_string()
+            )),
+        }
+    }
+
+    pub fn place_market_order(
+        &mut self,
+        pair: &TradingPair,
+        order: &mut Order,
+    ) -> Result<(), String> {
+        match self.orderbooks.get_mut(pair) {
+            Some(orderbook) => {
+                orderbook.fill_market_order(order);
+                println!("filled market order, remaining size: {}", order.size);
+                Ok(())
+            }
+            None => Err(format!(
+                "orderbook for pair {} does not exist",
                 pair.to_string()
             )),
         }
