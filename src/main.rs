@@ -7,13 +7,10 @@ fn main() {
  //   let price = Price::new(50.5);
    // println!("{:?}", price);
 
-    let buy_order = Order::new(BidOrAsk::Bid, 9.0);
-   // let sell_order = Order::new(BidOrAsk::Ask, 9.0);
+    let buy_order = Order::new(BidOrAsk::Bid, dec!(9.0));
+   // let sell_order = Order::new(BidOrAsk::Ask, dec!(9.0));
 
-//    let mut limit = Limit::new(99.0);
-//    limit.add_order(buy_order);
-//    println!("{:?}",limit);
-    let buy_order_bob = Order::new(BidOrAsk::Bid, 9.0);
+    let buy_order_bob = Order::new(BidOrAsk::Bid, dec!(9.0));
 
     
     let mut order_book = Orderbook::new();
@@ -27,7 +24,7 @@ fn main() {
     engine.add_new_market(pair.clone());
     println!("{:?}",engine);
 
-    let buy_order = Order::new(BidOrAsk::Bid,6.4);
+    let buy_order = Order::new(BidOrAsk::Bid, dec!(6.4));
   //  let eth_pair = TradingPair::new("ETH".into(),"USD".into());
 
     engine.place_limit_order(pair, dec!(10.0000), buy_order).unwrap();
